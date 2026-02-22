@@ -1,7 +1,17 @@
 name: ArenaRuntime
 version: '1.0.0'
-main: dev.denismasterherobrine.arena.ArenaRuntimePlugin
+main: dev.denismasterherobrine.finale.arenaruntime.ArenaRuntimePlugin
 api-version: '1.21'
+depend: [ArenaWorldManagerPlugin]
 prefix: ArenaRuntime
 load: STARTUP
 authors: [ DenisMasterHerobrine ]
+commands:
+  arenastart:
+    description: Начать тестовую сессию на арене.
+    usage: /arenastart <templateId>
+    permission: arena.runtime.test
+  arenastop:
+    description: Принудительно остановить текущую сессию.
+    usage: /arenastop
+    permission: arena.runtime.test
