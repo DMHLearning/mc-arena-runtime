@@ -15,7 +15,7 @@ public class ArenaRuntimePlugin extends JavaPlugin {
 
     @Override
     public void onEnable() {
-        // 1. Подключение к ArenaWorldManager
+        // Подключение к ArenaWorldManager
         Plugin awmPlugin = getServer().getPluginManager().getPlugin("ArenaWorldManagerPlugin");
         if (awmPlugin == null || !awmPlugin.isEnabled()) {
             getLogger().severe("ArenaWorldManager не найден! ArenaRuntime отключается.");
@@ -32,10 +32,10 @@ public class ArenaRuntimePlugin extends JavaPlugin {
             return;
         }
 
-        // 2. Инициализация реестра
-        this.sessionRegistry = new SessionRegistry();
+        // Инициализация реестра
+        sessionRegistry = new SessionRegistry();
 
-        // 3. Регистрация команд
+        // Регистрация команд
         var startCommand = getCommand("arenastart");
         if (startCommand != null) {
             startCommand.setExecutor(new ArenaStartCommand());
