@@ -1,0 +1,7 @@
+name: ArenaRuntime
+version: '1.0.0'
+main: dev.denismasterherobrine.arena.ArenaRuntimePlugin
+api-version: '1.21'
+prefix: ArenaRuntime
+load: STARTUP
+authors: [ DenisMasterHerobrine ]
