@@ -39,4 +39,12 @@ public class SessionRegistry {
         }
         return Optional.empty();
     }
+
+    /**
+     * Ищет сессию по имени мира арены.
+     * Используется для маршрутизации событий мобов к нужному WaveManager.
+     */
+    public Optional<ArenaSession> getSessionByWorldName(String worldName) {
+        return Optional.ofNullable(activeSessions.get(worldName));
+    }
 }

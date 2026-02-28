@@ -24,7 +24,10 @@ public class ArenaStartCommand implements CommandExecutor {
         String matchId = "match_" + UUID.randomUUID().toString().substring(0, 5);
         String templateId = args[0];
 
-        ArenaSession session = new ArenaSession(ArenaRuntimePlugin.getPlugin(ArenaRuntimePlugin.class), ArenaRuntimePlugin.getWorldApi(), ArenaRuntimePlugin.getSessionRegistry(), matchId, templateId);
+        ArenaRuntimePlugin plugin = ArenaRuntimePlugin.getPlugin(ArenaRuntimePlugin.class);
+        ArenaSession session = new ArenaSession(plugin, ArenaRuntimePlugin.getWorldApi(),
+                ArenaRuntimePlugin.getSessionRegistry(), ArenaRuntimePlugin.getConfigLoader(),
+                matchId, templateId);
         session.addPlayer(player);
         session.start();
 

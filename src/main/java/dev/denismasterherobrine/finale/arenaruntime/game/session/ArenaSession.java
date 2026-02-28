@@ -1,7 +1,12 @@
 package dev.denismasterherobrine.finale.arenaruntime.game.session;
 
 import dev.denismasterherobrine.arenaworldmanager.api.ArenaWorldAPI;
+import dev.denismasterherobrine.finale.arenaruntime.ArenaRuntimePlugin;
+import dev.denismasterherobrine.finale.arenaruntime.config.ConfigLoader;
 import dev.denismasterherobrine.finale.arenaruntime.game.ArenaState;
+import dev.denismasterherobrine.finale.arenaruntime.game.util.SafeSpawnFinder;
+import dev.denismasterherobrine.finale.arenaruntime.game.util.StarterKit;
+import dev.denismasterherobrine.finale.arenaruntime.game.wave.WaveManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
@@ -20,17 +25,21 @@ public class ArenaSession {
     private final JavaPlugin plugin;
     private final ArenaWorldAPI worldApi;
     private final SessionRegistry registry;
+    private final ConfigLoader config;
 
     private final String arenaId;
     private final String templateId;
     private final List<Player> players = new ArrayList<>();
 
     private ArenaState currentState = ArenaState.IDLE;
+    private WaveManager waveManager;
 
-    public ArenaSession(JavaPlugin plugin, ArenaWorldAPI worldApi, SessionRegistry registry, String arenaId, String templateId) {
+    public ArenaSession(JavaPlugin plugin, ArenaWorldAPI worldApi, SessionRegistry registry,
+                        ConfigLoader config, String arenaId, String templateId) {
         this.plugin = plugin;
         this.worldApi = worldApi;
         this.registry = registry;
+        this.config = config;
         this.arenaId = arenaId;
         this.templateId = templateId;
     }
@@ -38,6 +47,7 @@ public class ArenaSession {
     public String getArenaId() { return arenaId; }
     public ArenaState getState() { return currentState; }
     public List<Player> getPlayers() { return Collections.unmodifiableList(players); }
+    public WaveManager getWaveManager() { return waveManager; }
 
     public void addPlayer(Player player) {
         if (currentState == ArenaState.IDLE) {
@@ -55,8 +65,8 @@ public class ArenaSession {
         registry.register(this);
         broadcast(Component.text("Подготовка арены...", NamedTextColor.YELLOW));
 
-        worldApi.getMapConfig(templateId).ifPresentOrElse(config -> {
-            worldApi.prepareArena(arenaId, config)
+        worldApi.getMapConfig(templateId).ifPresentOrElse(mapConfig -> {
+            worldApi.prepareArena(arenaId, mapConfig)
                     .thenAcceptAsync(v -> onArenaPrepared(),
                             runnable -> Bukkit.getGlobalRegionScheduler().execute(plugin, runnable))
                     .exceptionally(this::handlePreparationFailure);
@@ -74,13 +84,18 @@ public class ArenaSession {
             return;
         }
 
-        Location spawnLocation = new Location(world, 0, 100, 0); // TODO: В будущем брать из конфига арены
+        Location spawnLocation = SafeSpawnFinder.find(world, config.getSafeSpawnSearchRadius());
+
         for (Player player : players) {
+            StarterKit.stripPlayer(player);
+            StarterKit.giveStarterKit(player);
             player.teleportAsync(spawnLocation);
         }
 
         broadcast(Component.text("Битва началась!", NamedTextColor.GREEN));
-        // TODO: Инициализация WaveManager и запуск первой волны
+
+        waveManager = new WaveManager(plugin, this, spawnLocation, config);
+        waveManager.start();
     }
 
     private Void handlePreparationFailure(Throwable exception) {
@@ -93,16 +108,35 @@ public class ArenaSession {
     }
 
     /**
+     * Завершает игру с выдачей лута (добровольный выход на checkpoint).
+     */
+    public void finishMatchWithLoot(int wavesReached) {
+        if (currentState != ArenaState.RUNNING) return;
+
+        int coins = wavesReached * config.getCoinsPerWave();
+        for (Player player : players) {
+            if (player.isOnline() && coins > 0) {
+                ArenaRuntimePlugin.getCoinService().giveCoins(player, coins);
+            }
+        }
+        broadcast(Component.text("Вы забрали " + coins + " монет!", NamedTextColor.GOLD));
+
+        finishMatch();
+    }
+
+    /**
      * Завершает игру (победа, поражение или добровольный выход).
      */
     public void finishMatch() {
         if (currentState != ArenaState.RUNNING) return;
         changeState(ArenaState.FINISH);
 
-        broadcast(Component.text("Игра окончена! Возвращение в лобби...", NamedTextColor.GOLD));
-        // TODO: Выдача наград, запись статистики
+        if (waveManager != null && !waveManager.isFinished()) {
+            waveManager.cleanup();
+        }
 
-        // Запускаем сброс с небольшой задержкой, чтобы игроки успели прочитать сообщения
+        broadcast(Component.text("Игра окончена! Возвращение в лобби...", NamedTextColor.GOLD));
+
         Bukkit.getAsyncScheduler().runDelayed(plugin, task -> forceReset(), 5, TimeUnit.SECONDS);
     }
 
@@ -112,11 +146,26 @@ public class ArenaSession {
     private void forceReset() {
         changeState(ArenaState.RESET);
 
-        Location lobbySpawn = Bukkit.getWorlds().get(0).getSpawnLocation(); // TODO: Переносить на сервер paper-lobby, а не на спавн первого мира
         Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
             for (Player player : players) {
                 if (player.isOnline()) {
-                    player.teleportAsync(lobbySpawn);
+                    StarterKit.stripPlayer(player);
+                }
+            }
+
+            if (config.isUseVelocity()) {
+                var connector = ArenaRuntimePlugin.getLobbyConnector();
+                for (Player player : players) {
+                    if (player.isOnline()) {
+                        connector.connectToLobby(player);
+                    }
+                }
+            } else {
+                Location lobbySpawn = config.getLobbySpawn();
+                for (Player player : players) {
+                    if (player.isOnline()) {
+                        player.teleportAsync(lobbySpawn);
+                    }
                 }
             }
 

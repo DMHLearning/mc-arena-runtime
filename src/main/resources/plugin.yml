@@ -15,3 +15,6 @@ commands:
     description: Принудительно остановить текущую сессию.
     usage: /arenastop
     permission: arena.runtime.test
+  arenaruntime:
+    description: Внутренняя команда для выбора на checkpoint (покинуть/продолжить).
+    usage: /arenaruntime checkpoint <leave|continue>
