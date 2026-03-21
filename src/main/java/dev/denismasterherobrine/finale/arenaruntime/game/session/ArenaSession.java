@@ -3,6 +3,9 @@ package dev.denismasterherobrine.finale.arenaruntime.game.session;
 import dev.denismasterherobrine.arenaworldmanager.api.ArenaWorldAPI;
 import dev.denismasterherobrine.finale.arenaruntime.ArenaRuntimePlugin;
 import dev.denismasterherobrine.finale.arenaruntime.config.ConfigLoader;
+import dev.denismasterherobrine.finale.arenaruntime.event.ArenaStateChangedEvent;
+import dev.denismasterherobrine.finale.arenaruntime.event.SessionEndedEvent;
+import dev.denismasterherobrine.finale.arenaruntime.event.SessionStartedEvent;
 import dev.denismasterherobrine.finale.arenaruntime.game.ArenaState;
 import dev.denismasterherobrine.finale.arenaruntime.game.util.SafeSpawnFinder;
 import dev.denismasterherobrine.finale.arenaruntime.game.util.StarterKit;
@@ -93,6 +96,7 @@ public class ArenaSession {
         }
 
         broadcast(Component.text("Битва началась!", NamedTextColor.GREEN));
+        Bukkit.getPluginManager().callEvent(new SessionStartedEvent(arenaId, players.size()));
 
         waveManager = new WaveManager(plugin, this, spawnLocation, config);
         waveManager.start();
@@ -103,6 +107,8 @@ public class ArenaSession {
         broadcast(Component.text("Произошла ошибка при создании арены. Матч отменен.", NamedTextColor.RED));
 
         changeState(ArenaState.FINISH);
+        Bukkit.getPluginManager().callEvent(
+                new SessionEndedEvent(arenaId, 0, SessionEndedEvent.EndReason.PREPARATION_FAILED));
         forceReset();
         return null;
     }
@@ -121,7 +127,18 @@ public class ArenaSession {
         }
         broadcast(Component.text("Вы забрали " + coins + " монет!", NamedTextColor.GOLD));
 
-        finishMatch();
+        changeState(ArenaState.FINISH);
+
+        if (waveManager != null && !waveManager.isFinished()) {
+            waveManager.cleanup();
+        }
+
+        Bukkit.getPluginManager().callEvent(
+                new SessionEndedEvent(arenaId, wavesReached, SessionEndedEvent.EndReason.EVACUATED));
+
+        broadcast(Component.text("Игра окончена! Возвращение в лобби...", NamedTextColor.GOLD));
+
+        Bukkit.getAsyncScheduler().runDelayed(plugin, task -> forceReset(), 5, TimeUnit.SECONDS);
     }
 
     /**
@@ -129,11 +146,17 @@ public class ArenaSession {
      */
     public void finishMatch() {
         if (currentState != ArenaState.RUNNING) return;
+
+        int wavesReached = waveManager != null ? waveManager.getCurrentWave() : 0;
+
         changeState(ArenaState.FINISH);
 
         if (waveManager != null && !waveManager.isFinished()) {
             waveManager.cleanup();
         }
+
+        Bukkit.getPluginManager().callEvent(
+                new SessionEndedEvent(arenaId, wavesReached, SessionEndedEvent.EndReason.ALL_DEAD));
 
         broadcast(Component.text("Игра окончена! Возвращение в лобби...", NamedTextColor.GOLD));
 
@@ -142,43 +165,71 @@ public class ArenaSession {
 
     /**
      * Принудительно очищает арену и выкидывает игроков в лобби.
+     *
+     * Порядок важен: registry.unregister + players.clear выполняются ДО отправки игроков
+     * в лобби, чтобы избежать race condition — если игрок успеет вернуться на сервер
+     * раньше, чем завершится async resetArena(), AutoSessionListener не увидит старую
+     * сессию и корректно создаст новую.
      */
     private void forceReset() {
         changeState(ArenaState.RESET);
 
         Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
-            for (Player player : players) {
+            // Снимаем копию списка до очистки — нужна для последующей отправки в лобби
+            List<Player> playersSnapshot = new ArrayList<>(players);
+
+            for (Player player : playersSnapshot) {
                 if (player.isOnline()) {
                     StarterKit.stripPlayer(player);
                 }
             }
 
+            // Сообщаем matchmaker, что слот снова свободен, пока игроки ещё на сервере
+            var reporter = ArenaRuntimePlugin.getMatchmakerReporter();
+            if (reporter != null) {
+                for (Player player : playersSnapshot) {
+                    if (player.isOnline()) {
+                        reporter.sendHealthy(player);
+                        break; // достаточно одного носителя
+                    }
+                }
+            }
+
+            // Убираем сессию из реестра и очищаем список ДО отправки игроков в лобби.
+            // Без этого: игрок попадает обратно на paper-arena (через matchmaker),
+            // AutoSessionListener видит его в старой сессии и не создаёт новую.
+            registry.unregister(arenaId);
+            players.clear();
+
             if (config.isUseVelocity()) {
                 var connector = ArenaRuntimePlugin.getLobbyConnector();
-                for (Player player : players) {
+                for (Player player : playersSnapshot) {
                     if (player.isOnline()) {
                         connector.connectToLobby(player);
                     }
                 }
             } else {
                 Location lobbySpawn = config.getLobbySpawn();
-                for (Player player : players) {
+                for (Player player : playersSnapshot) {
                     if (player.isOnline()) {
                         player.teleportAsync(lobbySpawn);
                     }
                 }
             }
 
-            worldApi.resetArena(arenaId).thenRun(() -> {
-                registry.unregister(arenaId);
-                players.clear();
+            worldApi.resetArena(arenaId).whenComplete((v, ex) -> {
+                if (ex != null) {
+                    plugin.getLogger().severe("[ArenaRuntime] Ошибка сброса арены " + arenaId + ": " + ex.getMessage());
+                }
             });
         });
     }
 
     private void changeState(ArenaState newState) {
+        ArenaState oldState = this.currentState;
         Bukkit.getLogger().info("[ArenaRuntime] Арена " + arenaId + " перешла в состояние " + newState);
         this.currentState = newState;
+        Bukkit.getPluginManager().callEvent(new ArenaStateChangedEvent(arenaId, oldState, newState));
     }
 
     public void broadcast(Component message) {

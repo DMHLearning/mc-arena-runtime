@@ -31,6 +31,14 @@ public class ConfigLoader {
     private final double lobbyY;
     private final double lobbyZ;
 
+    private final boolean matchmakerEnabled;
+    private final String matchmakerArenaId;
+    private final String matchmakerServerId;
+    private final String matchmakerMode;
+    private final int matchmakerMaxPlayers;
+    private final long matchmakerTtlMs;
+    private final String matchmakerTemplateId;
+
     public ConfigLoader(FileConfiguration config, Logger logger) {
         this.mobSpawnRadius = config.getInt("arena.mob-spawn-radius", 15);
         this.safeSpawnSearchRadius = config.getInt("arena.safe-spawn-search-radius", 10);
@@ -50,6 +58,14 @@ public class ConfigLoader {
         this.lobbyX = config.getDouble("lobby.spawn-x", 0.0);
         this.lobbyY = config.getDouble("lobby.spawn-y", 64.0);
         this.lobbyZ = config.getDouble("lobby.spawn-z", 0.0);
+
+        this.matchmakerEnabled = config.getBoolean("matchmaker.enabled", true);
+        this.matchmakerArenaId = config.getString("matchmaker.arena-id", "solo_arena_01");
+        this.matchmakerServerId = config.getString("matchmaker.server-id", "paper-arena");
+        this.matchmakerMode = config.getString("matchmaker.mode", "solo");
+        this.matchmakerMaxPlayers = config.getInt("matchmaker.max-players", 1);
+        this.matchmakerTtlMs = config.getLong("matchmaker.ttl-ms", 315360000000L);
+        this.matchmakerTemplateId = config.getString("matchmaker.template-id", "auto_solo");
     }
 
     private Set<EntityType> parseMobTypes(List<String> names, Logger logger) {
@@ -124,5 +140,33 @@ public class ConfigLoader {
      */
     public int getMobsForWave(int waveNumber) {
         return mobsPerWaveBase + (waveNumber - 1) * mobsPerWaveScaling;
+    }
+
+    public boolean isMatchmakerEnabled() {
+        return matchmakerEnabled;
+    }
+
+    public String getMatchmakerArenaId() {
+        return matchmakerArenaId;
+    }
+
+    public String getMatchmakerServerId() {
+        return matchmakerServerId;
+    }
+
+    public String getMatchmakerMode() {
+        return matchmakerMode;
+    }
+
+    public int getMatchmakerMaxPlayers() {
+        return matchmakerMaxPlayers;
+    }
+
+    public long getMatchmakerTtlMs() {
+        return matchmakerTtlMs;
+    }
+
+    public String getMatchmakerTemplateId() {
+        return matchmakerTemplateId;
     }
 }

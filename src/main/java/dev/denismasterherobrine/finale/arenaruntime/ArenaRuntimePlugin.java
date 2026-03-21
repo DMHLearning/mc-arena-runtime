@@ -9,6 +9,8 @@ import dev.denismasterherobrine.finale.arenaruntime.economy.CoinService;
 import dev.denismasterherobrine.finale.arenaruntime.game.listener.ArenaEventListener;
 import dev.denismasterherobrine.finale.arenaruntime.game.session.ArenaSession;
 import dev.denismasterherobrine.finale.arenaruntime.game.session.SessionRegistry;
+import dev.denismasterherobrine.finale.arenaruntime.listener.AutoSessionListener;
+import dev.denismasterherobrine.finale.arenaruntime.matchmaker.MatchmakerReporter;
 import dev.denismasterherobrine.finale.arenaruntime.network.LobbyConnector;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -20,6 +22,7 @@ public class ArenaRuntimePlugin extends JavaPlugin {
     private static ConfigLoader configLoader;
     private static LobbyConnector lobbyConnector;
     private static CoinService coinService;
+    private static MatchmakerReporter matchmakerReporter;
 
     @Override
     public void onEnable() {
@@ -54,8 +57,19 @@ public class ArenaRuntimePlugin extends JavaPlugin {
         // Канал BungeeCord для Velocity
         getServer().getMessenger().registerOutgoingPluginChannel(this, LobbyConnector.getChannel());
 
-        // Регистрация Listener'а событий
+        // Канал для отправки ARENA_STATUS в arena-matchmaker через Velocity
+        getServer().getMessenger().registerOutgoingPluginChannel(this, MatchmakerReporter.CHANNEL);
+        matchmakerReporter = new MatchmakerReporter(this, configLoader, getLogger());
+
+        // Регистрация Listener'ов
         getServer().getPluginManager().registerEvents(new ArenaEventListener(sessionRegistry), this);
+
+        if (configLoader.isMatchmakerEnabled()) {
+            getServer().getPluginManager().registerEvents(
+                    new AutoSessionListener(this, worldApi, sessionRegistry, configLoader,
+                            matchmakerReporter, getLogger()), this);
+            getLogger().info("ArenaRuntime: авто-сессии включены (matchmaker.enabled=true).");
+        }
 
         // Регистрация команд
         var startCommand = getCommand("arenastart");
@@ -84,6 +98,7 @@ public class ArenaRuntimePlugin extends JavaPlugin {
             }
         }
         getServer().getMessenger().unregisterOutgoingPluginChannel(this, LobbyConnector.getChannel());
+        getServer().getMessenger().unregisterOutgoingPluginChannel(this, MatchmakerReporter.CHANNEL);
     }
 
     public static ArenaWorldAPI getWorldApi() {
@@ -104,5 +119,9 @@ public class ArenaRuntimePlugin extends JavaPlugin {
 
     public static CoinService getCoinService() {
         return coinService;
+    }
+
+    public static MatchmakerReporter getMatchmakerReporter() {
+        return matchmakerReporter;
     }
 }

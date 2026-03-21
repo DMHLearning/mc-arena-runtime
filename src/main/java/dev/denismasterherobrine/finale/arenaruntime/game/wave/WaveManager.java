@@ -1,6 +1,8 @@
 package dev.denismasterherobrine.finale.arenaruntime.game.wave;
 
 import dev.denismasterherobrine.finale.arenaruntime.config.ConfigLoader;
+import dev.denismasterherobrine.finale.arenaruntime.event.WaveCompletedEvent;
+import dev.denismasterherobrine.finale.arenaruntime.event.WaveStartedEvent;
 import dev.denismasterherobrine.finale.arenaruntime.game.session.ArenaSession;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -35,6 +37,7 @@ public class WaveManager {
     private boolean atCheckpoint = false;
     private volatile ScheduledTask checkpointTask;
     private BossBar bossBar;
+    private long waveStartTimeMs;
 
     public WaveManager(JavaPlugin plugin, ArenaSession session, Location arenaCenter, ConfigLoader config) {
         this.plugin = plugin;
@@ -102,6 +105,14 @@ public class WaveManager {
         return atCheckpoint;
     }
 
+    public int getAliveMobCount() {
+        return aliveMobs.size();
+    }
+
+    public long getWaveStartTimeMs() {
+        return waveStartTimeMs;
+    }
+
     /**
      * Игрок выбрал «Покинуть с лутом». Завершает сессию с выдачей лута.
      */
@@ -128,6 +139,7 @@ public class WaveManager {
 
         currentWave++;
         waveMobTotal = config.getMobsForWave(currentWave);
+        waveStartTimeMs = System.currentTimeMillis();
 
         session.broadcast(Component.text(
                 "Волна " + currentWave + " — спавн " + waveMobTotal + " мобов!",
@@ -140,12 +152,19 @@ public class WaveManager {
         }
 
         showBossBar();
+
+        Bukkit.getPluginManager().callEvent(
+                new WaveStartedEvent(session.getArenaId(), currentWave, waveMobTotal));
     }
 
     private void onWaveCleared() {
         if (finished) return;
 
+        long durationMs = System.currentTimeMillis() - waveStartTimeMs;
         hideBossBar();
+
+        Bukkit.getPluginManager().callEvent(
+                new WaveCompletedEvent(session.getArenaId(), currentWave, durationMs));
 
         session.broadcast(Component.text(
                 "Волна " + currentWave + " пройдена!", NamedTextColor.GREEN
@@ -214,6 +233,7 @@ public class WaveManager {
                     BarStyle.SOLID
             );
         }
+        bossBar.setVisible(true);
         for (Player player : session.getPlayers()) {
             if (player.isOnline()) {
                 bossBar.addPlayer(player);

@@ -37,3 +37,20 @@ lobby:
   spawn-x: 0.0
   spawn-y: 64.0
   spawn-z: 0.0
+
+# Интеграция с arena-matchmaker (Velocity)
+matchmaker:
+  # Включить авто-создание сессий при подключении игрока (через маршрутизацию matchmaker)
+  enabled: true
+  # Идентификатор арены — должен совпадать с arena-id в arena-matchmaker/config.yml
+  arena-id: "solo_arena_01"
+  # Имя backend в velocity.toml, на котором запущен этот сервер
+  server-id: "paper-arena"
+  # Игровой режим — должен совпадать с mode в arena-lobby-gateway/config.yml
+  mode: "solo"
+  # Максимальное число игроков для одного слота
+  max-players: 1
+  # TTL статуса в мс (10 лет — не протухнет; обновляется при изменении состояния)
+  ttl-ms: 315360000000
+  # ID шаблона карты в ArenaWorldManager (auto_<name> = из schematics/<name>.schem)
+  template-id: "auto_solo"
