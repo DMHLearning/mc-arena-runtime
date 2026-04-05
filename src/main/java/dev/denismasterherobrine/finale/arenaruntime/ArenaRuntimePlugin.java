@@ -12,8 +12,12 @@ import dev.denismasterherobrine.finale.arenaruntime.game.session.SessionRegistry
 import dev.denismasterherobrine.finale.arenaruntime.listener.AutoSessionListener;
 import dev.denismasterherobrine.finale.arenaruntime.matchmaker.MatchmakerReporter;
 import dev.denismasterherobrine.finale.arenaruntime.network.LobbyConnector;
+import dev.denismasterherobrine.finale.arenaruntime.supervisor.SupervisorRelayServer;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.IOException;
+import java.util.logging.Level;
 
 public class ArenaRuntimePlugin extends JavaPlugin {
 
@@ -23,6 +27,8 @@ public class ArenaRuntimePlugin extends JavaPlugin {
     private static LobbyConnector lobbyConnector;
     private static CoinService coinService;
     private static MatchmakerReporter matchmakerReporter;
+
+    private SupervisorRelayServer supervisorRelay;
 
     @Override
     public void onEnable() {
@@ -87,11 +93,28 @@ public class ArenaRuntimePlugin extends JavaPlugin {
             checkpointCommand.setExecutor(new ArenaCheckpointCommand(sessionRegistry));
         }
 
+        if (getConfig().getBoolean("supervisor-relay.enabled", false)) {
+            String bindHost = getConfig().getString("supervisor-relay.bind-host", "127.0.0.1");
+            int relayPort = getConfig().getInt("supervisor-relay.port", 9847);
+            String token = getConfig().getString("supervisor-relay.bearer-token", "");
+            supervisorRelay = new SupervisorRelayServer(this, sessionRegistry, bindHost, relayPort, token);
+            try {
+                supervisorRelay.start();
+            } catch (IOException e) {
+                getLogger().log(Level.SEVERE, "Не удалось запустить supervisor-relay", e);
+                supervisorRelay = null;
+            }
+        }
+
         getLogger().info("ArenaRuntime готов к работе.");
     }
 
     @Override
     public void onDisable() {
+        if (supervisorRelay != null) {
+            supervisorRelay.stop();
+            supervisorRelay = null;
+        }
         if (sessionRegistry != null) {
             for (ArenaSession session : sessionRegistry.getAllSessions()) {
                 session.finishMatch();

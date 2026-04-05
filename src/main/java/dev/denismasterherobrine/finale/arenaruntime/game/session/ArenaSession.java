@@ -103,13 +103,16 @@ public class ArenaSession {
     }
 
     private Void handlePreparationFailure(Throwable exception) {
-        Bukkit.getLogger().severe("[ArenaRuntime] Ошибка подготовки арены " + arenaId + ": " + exception.getMessage());
-        broadcast(Component.text("Произошла ошибка при создании арены. Матч отменен.", NamedTextColor.RED));
+        // exceptionally() may complete off the region thread; events and state must be sync.
+        Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
+            Bukkit.getLogger().severe("[ArenaRuntime] Ошибка подготовки арены " + arenaId + ": " + exception.getMessage());
+            broadcast(Component.text("Произошла ошибка при создании арены. Матч отменен.", NamedTextColor.RED));
 
-        changeState(ArenaState.FINISH);
-        Bukkit.getPluginManager().callEvent(
-                new SessionEndedEvent(arenaId, 0, SessionEndedEvent.EndReason.PREPARATION_FAILED));
-        forceReset();
+            changeState(ArenaState.FINISH);
+            Bukkit.getPluginManager().callEvent(
+                    new SessionEndedEvent(arenaId, 0, SessionEndedEvent.EndReason.PREPARATION_FAILED));
+            forceReset();
+        });
         return null;
     }
 
@@ -172,9 +175,9 @@ public class ArenaSession {
      * сессию и корректно создаст новую.
      */
     private void forceReset() {
-        changeState(ArenaState.RESET);
-
         Bukkit.getGlobalRegionScheduler().execute(plugin, () -> {
+            changeState(ArenaState.RESET);
+
             // Снимаем копию списка до очистки — нужна для последующей отправки в лобби
             List<Player> playersSnapshot = new ArrayList<>(players);
 

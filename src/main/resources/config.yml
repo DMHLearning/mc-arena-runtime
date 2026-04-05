@@ -54,3 +54,10 @@ matchmaker:
   ttl-ms: 315360000000
   # ID шаблона карты в ArenaWorldManager (auto_<name> = из schematics/<name>.schem)
   template-id: "auto_solo"
+
+# HTTP-релей для Supervisor
+supervisor-relay:
+  enabled: false
+  bind-host: "127.0.0.1"
+  port: 9847
+  bearer-token: ""
