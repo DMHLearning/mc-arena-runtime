@@ -31,6 +31,8 @@ public class SessionEndedEvent extends Event {
         ALL_DEAD,
         EVACUATED,
         PREPARATION_FAILED,
-        FORCE_STOPPED
+        FORCE_STOPPED,
+        SUPERVISOR_SOFT_FAIL,
+        SUPERVISOR_RESTART
     }
 }

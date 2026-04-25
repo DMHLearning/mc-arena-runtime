@@ -41,13 +41,35 @@ public class MobSpawner {
      * Спавнит {@code count} мобов в случайных точках в радиусе и возвращает список заспавненных сущностей.
      */
     public List<Entity> spawnMobs(int count) {
+        return spawnMobs(count, false, false);
+    }
+
+    /**
+     * @param simplifyAi если true — только зомби, слабость и замедление (режим «упрощённого AI»).
+     */
+    public List<Entity> spawnMobs(int count, boolean simplifyAi) {
+        return spawnMobs(count, simplifyAi, false);
+    }
+
+    /**
+     * @param simplifyAi если true — только зомби, слабость и замедление (режим «упрощённого AI»).
+     * @param aiRage     если true — мобы получают SPEED+STRENGTH (chaos «ar_ai_rage»).
+     */
+    public List<Entity> spawnMobs(int count, boolean simplifyAi, boolean aiRage) {
         List<Entity> spawned = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
             Location spawnLoc = findSpawnLocation();
-            EntityType type = randomMobType();
+            EntityType type = simplifyAi ? EntityType.ZOMBIE : randomMobType();
             Entity entity = world.spawnEntity(spawnLoc, type);
             if (entity instanceof LivingEntity living) {
                 living.addPotionEffect(new PotionEffect(PotionEffectType.GLOWING, Integer.MAX_VALUE, 0, false, false));
+                if (simplifyAi) {
+                    living.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, Integer.MAX_VALUE, 0, false, false));
+                    living.addPotionEffect(new PotionEffect(PotionEffectType.WEAKNESS, Integer.MAX_VALUE, 0, false, false));
+                } else if (aiRage) {
+                    living.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, Integer.MAX_VALUE, 1, false, false));
+                    living.addPotionEffect(new PotionEffect(PotionEffectType.STRENGTH, Integer.MAX_VALUE, 1, false, false));
+                }
             }
             spawned.add(entity);
         }

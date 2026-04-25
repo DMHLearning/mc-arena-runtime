@@ -36,6 +36,7 @@ public class ArenaSession {
 
     private ArenaState currentState = ArenaState.IDLE;
     private WaveManager waveManager;
+    private final SessionRuntimeOverrides runtimeOverrides = new SessionRuntimeOverrides();
 
     public ArenaSession(JavaPlugin plugin, ArenaWorldAPI worldApi, SessionRegistry registry,
                         ConfigLoader config, String arenaId, String templateId) {
@@ -51,6 +52,10 @@ public class ArenaSession {
     public ArenaState getState() { return currentState; }
     public List<Player> getPlayers() { return Collections.unmodifiableList(players); }
     public WaveManager getWaveManager() { return waveManager; }
+
+    public SessionRuntimeOverrides getRuntimeOverrides() {
+        return runtimeOverrides;
+    }
 
     public void addPlayer(Player player) {
         if (currentState == ArenaState.IDLE) {
@@ -162,6 +167,59 @@ public class ArenaSession {
                 new SessionEndedEvent(arenaId, wavesReached, SessionEndedEvent.EndReason.ALL_DEAD));
 
         broadcast(Component.text("Игра окончена! Возвращение в лобби...", NamedTextColor.GOLD));
+
+        Bukkit.getAsyncScheduler().runDelayed(plugin, task -> forceReset(), 5, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Жёсткий рестарт арены по команде Cortex / supervisor: завершить матч с пометкой
+     * SUPERVISOR_RESTART, после чего forceReset() сбросит мир через ArenaWorldAPI.
+     */
+    public void finishMatchSupervisorRestart() {
+        if (currentState != ArenaState.RUNNING) {
+            return;
+        }
+
+        int wavesReached = waveManager != null ? waveManager.getCurrentWave() : 0;
+
+        changeState(ArenaState.FINISH);
+
+        if (waveManager != null && !waveManager.isFinished()) {
+            waveManager.cleanup();
+        }
+
+        Bukkit.getPluginManager().callEvent(
+                new SessionEndedEvent(arenaId, wavesReached, SessionEndedEvent.EndReason.SUPERVISOR_RESTART));
+
+        broadcast(Component.text(
+                "Арена перезапускается по команде оператора...",
+                NamedTextColor.YELLOW));
+
+        Bukkit.getAsyncScheduler().runDelayed(plugin, task -> forceReset(), 5, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Мягкое завершение по команде Cortex / supervisor (без лута).
+     */
+    public void finishMatchSupervisorSoftFail() {
+        if (currentState != ArenaState.RUNNING) {
+            return;
+        }
+
+        int wavesReached = waveManager != null ? waveManager.getCurrentWave() : 0;
+
+        changeState(ArenaState.FINISH);
+
+        if (waveManager != null && !waveManager.isFinished()) {
+            waveManager.cleanup();
+        }
+
+        Bukkit.getPluginManager().callEvent(
+                new SessionEndedEvent(arenaId, wavesReached, SessionEndedEvent.EndReason.SUPERVISOR_SOFT_FAIL));
+
+        broadcast(Component.text(
+                "Арена остановлена оператором (мягкий сбой). Возвращение в лобби...",
+                NamedTextColor.YELLOW));
 
         Bukkit.getAsyncScheduler().runDelayed(plugin, task -> forceReset(), 5, TimeUnit.SECONDS);
     }

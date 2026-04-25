@@ -109,6 +109,51 @@ public class WaveManager {
         return aliveMobs.size();
     }
 
+    /**
+     * Silently removes every currently alive mob (entity.remove() — no death event fires).
+     * The {@code aliveMobs} bookkeeping is intentionally NOT updated, so the wave appears
+     * "stuck" with a non-zero alive count but no entities in the world. Used by chaos
+     * scenario {@code ar_desync}.
+     */
+    public void chaosRemoveAliveMobsSilently() {
+        for (UUID uuid : aliveMobs) {
+            Entity entity = Bukkit.getEntity(uuid);
+            if (entity != null) {
+                entity.remove();
+            }
+        }
+    }
+
+    /**
+     * Applies SPEED + STRENGTH to every currently alive mob. Used by chaos scenario
+     * {@code ar_ai_rage} so the effect is visible immediately on the running wave (in
+     * addition to taking effect on subsequent spawns via {@link MobSpawner}).
+     */
+    public void chaosApplyRageToAliveMobs() {
+        for (UUID uuid : aliveMobs) {
+            Entity entity = Bukkit.getEntity(uuid);
+            if (entity instanceof org.bukkit.entity.LivingEntity living) {
+                living.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                        org.bukkit.potion.PotionEffectType.SPEED, Integer.MAX_VALUE, 1, false, false));
+                living.addPotionEffect(new org.bukkit.potion.PotionEffect(
+                        org.bukkit.potion.PotionEffectType.STRENGTH, Integer.MAX_VALUE, 1, false, false));
+            }
+        }
+    }
+
+    /**
+     * Removes RAGE potions from currently alive mobs (revert helper for {@code ar_ai_rage}).
+     */
+    public void chaosClearRageFromAliveMobs() {
+        for (UUID uuid : aliveMobs) {
+            Entity entity = Bukkit.getEntity(uuid);
+            if (entity instanceof org.bukkit.entity.LivingEntity living) {
+                living.removePotionEffect(org.bukkit.potion.PotionEffectType.SPEED);
+                living.removePotionEffect(org.bukkit.potion.PotionEffectType.STRENGTH);
+            }
+        }
+    }
+
     public long getWaveStartTimeMs() {
         return waveStartTimeMs;
     }
@@ -137,8 +182,17 @@ public class WaveManager {
     private void startNextWave() {
         if (finished) return;
 
+        var overrides = session.getRuntimeOverrides();
+        if (overrides.isChaosWaveFreeze()) {
+            // Chaos «ar_wave_stuck» / «ar_desync» — periodically reschedule until lifted.
+            Bukkit.getAsyncScheduler().runDelayed(plugin, t ->
+                            Bukkit.getGlobalRegionScheduler().execute(plugin, this::startNextWave),
+                    5, TimeUnit.SECONDS);
+            return;
+        }
+
         currentWave++;
-        waveMobTotal = config.getMobsForWave(currentWave);
+        waveMobTotal = overrides.effectiveMobsForWave(config, currentWave);
         waveStartTimeMs = System.currentTimeMillis();
 
         session.broadcast(Component.text(
@@ -146,7 +200,20 @@ public class WaveManager {
                 NamedTextColor.RED
         ));
 
-        List<Entity> spawned = mobSpawner.spawnMobs(waveMobTotal);
+        if (overrides.consumeChaosThrowOnNextSpawn()) {
+            // Chaos «ar_softfail» — controlled fault. Schedule reset attempt and surface to LLM
+            // via the natural metric path (no mobs alive, wave never clears).
+            session.broadcast(Component.text(
+                    "Сбой спавна волны " + currentWave + " (chaos)!",
+                    NamedTextColor.DARK_RED));
+            plugin.getLogger().warning("[ArenaRuntime] chaos: simulated mob spawn failure on wave " + currentWave);
+            showBossBar();
+            Bukkit.getPluginManager().callEvent(
+                    new WaveStartedEvent(session.getArenaId(), currentWave, 0));
+            return;
+        }
+
+        List<Entity> spawned = mobSpawner.spawnMobs(waveMobTotal, overrides.isSimplifyAi(), overrides.isChaosAiRage());
         for (Entity entity : spawned) {
             aliveMobs.add(entity.getUniqueId());
         }
@@ -206,7 +273,7 @@ public class WaveManager {
     }
 
     private void scheduleNextWave() {
-        int delay = config.getDelayBetweenWaves();
+        int delay = session.getRuntimeOverrides().effectiveDelayBetweenWaves(config);
         session.broadcast(Component.text(
                 "Следующая волна через " + delay + " сек...", NamedTextColor.YELLOW
         ));
